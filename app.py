@@ -1,57 +1,85 @@
 import streamlit as st
 import pandas as pd
 import joblib
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
-# 设置网页标题
+# ----- Page Config -----
 st.set_page_config(page_title="Prompt Literacy Predictor", layout="centered")
-st.title("📊 Prompt Literacy 预测工具")
-st.markdown("使用眼动数据预测被试的 Prompt Literacy 等级（高 / 中 / 低）")
+st.markdown(
+    """
+    <style>
+    body {
+        background-image: url("https://i.imgur.com/nHfHkPW.png");
+        background-size: 400px;
+        background-repeat: repeat;
+        background-attachment: fixed;
+        background-color: #f3edf9;
+    }
 
-# 上传CSV文件
-uploaded_file = st.file_uploader("请上传包含眼动特征的CSV文件：", type=["csv"])
+    .stApp {
+        background-color: rgba(255, 255, 255, 0.85);
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    }
+
+    h1, h2, h3 {
+        color: #4b367c;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ----- Title & Description -----
+st.markdown("""
+# ✨ Prompt Literacy Predictor  
+Upload your eye-tracking data and get a quick prediction of the prompt literacy level (High / Medium / Low).
+""")
+
+st.markdown("""
+This tool uses a machine learning model trained on eye-tracking features to evaluate users' prompt literacy based on their interaction during a creative task.
+""")
+
+st.markdown("---")
+
+# ----- File Upload -----
+uploaded_file = st.file_uploader("📤 Upload your CSV file with eye-tracking features", type=["csv"])
 
 if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    st.success("✅ 文件上传成功，预览如下：")
-    st.dataframe(df.head())
+    try:
+        # Load data
+        input_data = pd.read_csv(uploaded_file)
+        st.success("✅ File uploaded successfully!")
+        st.write("Preview of uploaded data:", input_data.head())
 
-    # 检查是否包含必要字段
-    required_columns = [
-        "fixation_duration_input",
-        "fixation_duration_output",
-        "fixation_count_input",
-        "fixation_count_output",
-        "revisits_input",
-        "average_fixation_duration"
-    ]
+        # Load model and scaler
+        model = joblib.load("model/prompt_lit_model.pkl")
+        scaler = joblib.load("model/scaler.pkl")
 
-    if all(col in df.columns for col in required_columns):
-        # 加载训练好的模型和标准化器（需要先训练并保存）
-        try:
-            model = joblib.load("model/prompt_lit_model.pkl")
-            scaler = joblib.load("model/scaler.pkl")
+        # Scale data
+        scaled_features = scaler.transform(input_data.drop(columns=["participant_id"], errors="ignore"))
 
-            # 特征提取并标准化
-            X = df[required_columns]
-            X_scaled = scaler.transform(X)
+        # Predict
+        predictions = model.predict(scaled_features)
+        input_data["Predicted Literacy Level"] = predictions
 
-            # 预测
-            preds = model.predict(X_scaled)
-            pred_df = df.copy()
-            pred_df["Predicted Literacy"] = preds
+        st.markdown("### 🧠 Prediction Results")
+        st.dataframe(input_data)
 
-            st.subheader("📈 预测结果：")
-            st.dataframe(pred_df[["Predicted Literacy"] + required_columns])
+        # Download button
+        csv = input_data.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Download results as CSV",
+            data=csv,
+            file_name="predicted_literacy.csv",
+            mime="text/csv",
+        )
 
-            # 下载结果
-            csv = pred_df.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 下载预测结果CSV", csv, "predicted_prompt_literacy.csv", "text/csv")
+        st.markdown("---")
+        st.markdown("✨ *Powered by Streamlit & Scikit-learn*")
 
-        except FileNotFoundError:
-            st.error("❌ 未找到模型文件，请先训练模型并保存在 model/ 目录下。")
-    else:
-        st.warning(f"⚠️ CSV中缺少必要字段。请确保包含以下列：{', '.join(required_columns)}")
+    except Exception as e:
+        st.error(f"⚠️ Something went wrong: {e}")
 else:
-    st.info("👈 请在左侧上传一个CSV文件以开始预测。")
+    st.info("👈 Please upload a CSV file to start.")
